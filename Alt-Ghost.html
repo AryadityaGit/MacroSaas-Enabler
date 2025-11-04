@@ -1,0 +1,138 @@
+   <!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>MacroSaas Enabler — VBA Ghost</title>
+  <script src="https://cdn.sheetjs.com/xlsx-latest/package/dist/xlsx.full.min.js"></script>
+  <style>
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      padding: 20px;
+      background: #f4f4f9;
+      color: #333;
+    }
+    h2 {
+      color: #444;
+    }
+    #ghostButton {
+      background: linear-gradient(to right, #e0e0e0, #f8f8f8);
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      padding: 10px 20px;
+      font-size: 16px;
+      color: #333;
+      box-shadow: 0 0 10px rgba(200, 200, 255, 0.4);
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    #ghostButton:hover {
+      background: #fff;
+      box-shadow: 0 0 15px rgba(150, 150, 255, 0.6);
+    }
+    #log {
+      white-space: pre-wrap;
+      background: #fff;
+      padding: 10px;
+      border: 1px solid #ccc;
+      margin-top: 20px;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+  </style>
+</head>
+<body>
+  <h2>🧠 MacroSaas Enabler — VBA Ghost</h2>
+  <p>Upload your macro Excel file, multiple source files, and a target file. This tool runs offline and simulates macro logic.</p>
+
+  <label>Macro File (.xlsm):</label><br>
+  <input type="file" id="macroFile" accept=".xlsm,.xlsx"><br><br>
+
+  <label>Source Files (select multiple):</label><br>
+  <input type="file" id="sourceFiles" accept=".xlsx" multiple><br><br>
+
+  <label>Target File (.xlsx):</label><br>
+  <input type="file" id="targetFile" accept=".xlsx"><br><br>
+
+  <button id="ghostButton">🕯️ Run Macro</button>
+
+  <pre id="log"></pre>
+
+<script>
+function log(msg) {
+  document.getElementById('log').textContent += msg + '\n';
+}
+
+document.getElementById('ghostButton').onclick = async function() {
+  const macroFile = document.getElementById('macroFile').files[0];
+  const sourceFiles = document.getElementById('sourceFiles').files;
+  const targetFile = document.getElementById('targetFile').files[0];
+  if (!macroFile || sourceFiles.length === 0 || !targetFile) {
+    return log("⚠️ Please upload macro, source, and target files.");
+  }
+
+  log("📥 Reading macro file...");
+  const macroData = await macroFile.arrayBuffer();
+  const macroWB = XLSX.read(macroData, {type: "array"});
+  const macroSheet = macroWB.Sheets[macroWB.SheetNames[0]];
+  const macroJSON = XLSX.utils.sheet_to_json(macroSheet);
+
+  log("🔍 Building lookup map from macro file...");
+  const lookupMap = {};
+  macroJSON.forEach(row => {
+    if (row.H) lookupMap[row.H] = row.I;
+  });
+
+  log("📂 Scanning source files...");
+  const sourceMap = {};
+  for (let file of sourceFiles) {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, {type: "array"});
+    const sheet = wb.Sheets[wb.SheetNames[0]];
+    const rows = XLSX.utils.sheet_to_json(sheet);
+    rows.forEach(row => {
+      if (row.H && !sourceMap[row.H]) {
+        sourceMap[row.H] = row.I;
+      }
+    });
+  }
+
+  log("📥 Reading target file...");
+  const targetData = await targetFile.arrayBuffer();
+  const targetWB = XLSX.read(targetData, {type: "array"});
+  const targetSheet = targetWB.Sheets[targetWB.SheetNames[0]];
+  const targetJSON = XLSX.utils.sheet_to_json(targetSheet);
+
+  log("🔄 Applying lookup to target file...");
+  let unmatched = [];
+  targetJSON.forEach(row => {
+    if (row.H) {
+      const match = sourceMap[row.H] || lookupMap[row.H];
+      if (match) {
+        row.I = match;
+      } else {
+        unmatched.push(row.H);
+      }
+    }
+  });
+
+  log(`✅ Macro logic applied. ${unmatched.length} unmatched entries.`);
+  if (unmatched.length > 0) {
+    log("❌ Unmatched IDs:\n" + unmatched.join(", "));
+  }
+
+  log("📦 Preparing updated file...");
+  const newSheet = XLSX.utils.json_to_sheet(targetJSON);
+  const newWB = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(newWB, newSheet, "Sheet1");
+  const outData = XLSX.write(newWB, {bookType: "xlsx", type: "array"});
+  const blob = new Blob([outData], {type: "application/octet-stream"});
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "updated_target.xlsx";
+  link.click();
+
+  log("🎉 File downloaded. You’re done!");
+};
+</script>
+</body>
+</html>
